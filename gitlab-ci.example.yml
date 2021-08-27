@@ -1,0 +1,33 @@
+variables:
+  AWS_DEFAULT_OUTPUT: JSON
+  APP_NAME: <專案名稱>
+  DOCKER_DRIVER: overlay2
+  DOCKER_HOST: tcp://localhost:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: 1
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  RELEASE_CHART: <專案名稱>
+
+stages:
+  - publish
+
+publish:
+  only:
+    - tags
+  image:
+    name: amazon/aws-cli
+    entrypoint: [""]
+  stage: publish
+  services:
+    - docker:19.03.15-dind
+  before_script:
+    - amazon-linux-extras install docker
+    - aws --version
+    - docker --version
+  script:
+    - docker build -t $DOCKER_REGISTRY/$APP_NAME -t $DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_TAG .
+    - aws ecr get-login-password | docker login --username AWS --password-stdin $DOCKER_REGISTRY
+    - docker push $DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_TAG
+    - docker push $DOCKER_REGISTRY/$APP_NAME
+    - export IMAGES_TO_DELETE=$( aws ecr list-images --region $AWS_DEFAULT_REGION --repository-name $APP_NAME --filter "tagStatus=UNTAGGED" --query 'imageIds[*]' --output json )
+    - aws ecr batch-delete-image --region $AWS_DEFAULT_REGION --repository-name $APP_NAME --image-ids "$IMAGES_TO_DELETE" || true
